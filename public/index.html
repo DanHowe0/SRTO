@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SRTO - Sectly's Remote Turtle Orchestrator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link rel="stylesheet" href="/css/styles.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'turtle-green': '#4ade80',
+            'turtle-dark': '#1a1a2e',
+            'turtle-card': '#16213e',
+            'turtle-accent': '#0f3460',
+            'turtle-highlight': '#e94560'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-turtle-dark text-white min-h-screen">
+  <nav class="bg-turtle-card border-b border-turtle-accent px-6 py-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-turtle-green rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-turtle-dark" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+          </svg>
+        </div>
+        <h1 class="text-xl font-bold">SRTO</h1>
+        <span class="text-gray-400 text-xs hidden sm:inline">Sectly's Remote Turtle Orchestrator</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <div id="connection-status" class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-red-500"></span>
+          <span class="text-sm text-gray-400">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="flex h-[calc(100vh-57px)]">
+    <aside id="turtle-sidebar" class="w-64 bg-turtle-card border-r border-turtle-accent overflow-y-auto flex-shrink-0">
+      <div class="p-3 border-b border-turtle-accent">
+        <h2 class="text-sm font-semibold mb-1">Connected Turtles</h2>
+        <p class="text-xs text-gray-400">Select a turtle to control</p>
+      </div>
+      <div id="turtle-list" class="p-2">
+        <div class="text-center text-gray-500 py-6 text-sm">
+          <p>No turtles connected</p>
+          <p class="text-xs mt-1">Run startup script on turtle</p>
+        </div>
+      </div>
+    </aside>
+
+    <main class="flex-1 overflow-hidden flex flex-col">
+      <div id="no-turtle-selected" class="flex flex-col items-center justify-center h-full text-gray-400">
+        <svg class="w-20 h-20 mb-4 opacity-50" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+        <h2 class="text-xl font-semibold mb-2">No Turtle Selected</h2>
+        <p class="text-sm">Select a turtle from the sidebar to start controlling it</p>
+        <div class="mt-6 bg-turtle-card rounded-lg p-4 max-w-md">
+          <h3 class="text-sm font-semibold text-white mb-2">Setup Instructions</h3>
+          <p class="text-xs mb-2">Run this command on your ComputerCraft turtle:</p>
+          <code id="setup-command" class="block bg-turtle-dark p-2 rounded text-turtle-green text-xs break-all">
+            wget run <span id="server-url"></span>/install.lua <span id="server-url-2"></span>
+          </code>
+        </div>
+      </div>
+
+      <div id="turtle-control" class="hidden h-full flex flex-col">
+        <div class="flex items-center justify-between px-4 py-2 bg-turtle-card/50 border-b border-turtle-accent">
+          <div class="flex items-center gap-3">
+            <h2 id="turtle-name" class="text-lg font-bold">Turtle</h2>
+            <span id="turtle-status" class="px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400">Online</span>
+            <span id="turtle-type" class="px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-400 hidden"></span>
+            <span id="turtle-traits" class="text-xs text-gray-400 hidden"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="queue-count" class="text-xs text-yellow-400 hidden"></span>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-gray-400">ID:</span>
+              <code id="turtle-id" class="bg-turtle-dark px-2 py-0.5 rounded text-xs"></code>
+            </div>
+            <button onclick="renameTurtle()" class="text-xs bg-turtle-accent hover:bg-turtle-highlight px-2 py-1 rounded transition" title="Rename turtle">
+              Rename
+            </button>
+            <button onclick="gpsLocate()" class="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded transition" title="GPS locate">
+              GPS
+            </button>
+            <button onclick="calibrateGPS()" class="text-xs bg-indigo-600 hover:bg-indigo-500 px-2 py-1 rounded transition" title="Calibrate to GPS coordinates">
+              Calibrate
+            </button>
+            <button onclick="world3d?.focusOnTurtle()" class="text-xs bg-turtle-accent hover:bg-turtle-highlight px-2 py-1 rounded transition">
+              Focus
+            </button>
+            <button id="geo-scan-btn" onclick="geoScan()" class="text-xs bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded transition" title="Geo Scanner (max range)">
+              Scan
+            </button>
+            <button onclick="clearQueue()" class="text-xs bg-red-600 hover:bg-red-500 px-2 py-1 rounded transition" title="Clear command queue (DEL)">
+              Clear Q
+            </button>
+            <button onclick="rebootTurtle()" class="text-xs bg-orange-600 hover:bg-orange-500 px-2 py-1 rounded transition" title="Reboot turtle">
+              Reboot
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 flex overflow-hidden">
+          <div class="flex-1 flex flex-col">
+            <div id="world-container" class="flex-1 bg-turtle-dark relative">
+              <div id="world-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-turtle-dark/95 z-20 hidden">
+                <div class="text-lg mb-2">Loading World...</div>
+                <div class="w-48 h-2 bg-gray-700 rounded overflow-hidden">
+                  <div id="world-loading-bar" class="h-full bg-turtle-primary transition-all duration-100" style="width: 0%"></div>
+                </div>
+                <div id="world-loading-text" class="text-sm text-gray-400 mt-2">0 / 0 blocks</div>
+              </div>
+              <div id="block-hover-info" class="absolute top-2 right-2 bg-turtle-card/90 px-3 py-2 rounded text-xs hidden z-10">
+                <span id="hover-block-name">Block Name</span>
+                <span id="hover-block-pos" class="text-gray-400 ml-2"></span>
+              </div>
+            </div>
+            
+            <div class="h-48 bg-turtle-card border-t border-turtle-accent p-3 overflow-y-auto">
+              <div class="grid grid-cols-4 gap-3">
+                <div>
+                  <h4 class="text-xs font-semibold mb-2 text-gray-400">Movement</h4>
+                  <div class="grid grid-cols-3 gap-1">
+                    <div></div>
+                    <button onclick="sendCommand('forward')" class="control-btn bg-turtle-accent hover:bg-turtle-highlight p-2 rounded text-xs" title="W">W</button>
+                    <div></div>
+                    <button onclick="sendCommand('turnLeft')" class="control-btn bg-turtle-accent hover:bg-turtle-highlight p-2 rounded text-xs" title="A">A</button>
+                    <button onclick="sendCommand('back')" class="control-btn bg-turtle-accent hover:bg-turtle-highlight p-2 rounded text-xs" title="S">S</button>
+                    <button onclick="sendCommand('turnRight')" class="control-btn bg-turtle-accent hover:bg-turtle-highlight p-2 rounded text-xs" title="D">D</button>
+                  </div>
+                  <div class="flex gap-1 mt-1">
+                    <button onclick="sendCommand('up')" class="control-btn flex-1 bg-turtle-accent hover:bg-turtle-highlight p-2 rounded text-xs">Up</button>
+                    <button onclick="sendCommand('down')" class="control-btn flex-1 bg-turtle-accent hover:bg-turtle-highlight p-2 rounded text-xs">Down</button>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 class="text-xs font-semibold mb-2 text-gray-400">Actions</h4>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button onclick="sendCommand('dig')" class="action-btn bg-turtle-accent hover:bg-orange-600 p-1.5 rounded text-xs">Dig</button>
+                    <button onclick="sendCommand('place')" class="action-btn bg-turtle-accent hover:bg-blue-600 p-1.5 rounded text-xs">Place</button>
+                    <button onclick="sendCommand('digUp')" class="action-btn bg-turtle-accent hover:bg-orange-600 p-1.5 rounded text-xs">Dig Up</button>
+                    <button onclick="sendCommand('placeUp')" class="action-btn bg-turtle-accent hover:bg-blue-600 p-1.5 rounded text-xs">Place Up</button>
+                    <button onclick="sendCommand('digDown')" class="action-btn bg-turtle-accent hover:bg-orange-600 p-1.5 rounded text-xs">Dig Dn</button>
+                    <button onclick="sendCommand('placeDown')" class="action-btn bg-turtle-accent hover:bg-blue-600 p-1.5 rounded text-xs">Place Dn</button>
+                    <button onclick="sendCommand('attack')" class="action-btn bg-turtle-accent hover:bg-red-600 p-1.5 rounded text-xs">Attack</button>
+                    <button onclick="sendCommand('refuel')" class="action-btn bg-turtle-accent hover:bg-green-600 p-1.5 rounded text-xs">Refuel</button>
+                    <button onclick="placeSign()" class="action-btn bg-turtle-accent hover:bg-yellow-600 p-1.5 rounded text-xs col-span-2">Sign</button>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 class="text-xs font-semibold mb-2 text-gray-400">Interact</h4>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button onclick="sendCommand('suck')" class="action-btn bg-turtle-accent hover:bg-purple-600 p-1.5 rounded text-xs">Suck</button>
+                    <button onclick="sendCommand('drop')" class="action-btn bg-turtle-accent hover:bg-purple-600 p-1.5 rounded text-xs">Drop</button>
+                    <button onclick="sendCommand('suckUp')" class="action-btn bg-turtle-accent hover:bg-purple-600 p-1.5 rounded text-xs">Suck Up</button>
+                    <button onclick="sendCommand('dropUp')" class="action-btn bg-turtle-accent hover:bg-purple-600 p-1.5 rounded text-xs">Drop Up</button>
+                    <button onclick="sendCommand('suckDown')" class="action-btn bg-turtle-accent hover:bg-purple-600 p-1.5 rounded text-xs">Suck Dn</button>
+                    <button onclick="sendCommand('dropDown')" class="action-btn bg-turtle-accent hover:bg-purple-600 p-1.5 rounded text-xs">Drop Dn</button>
+                    <button onclick="sendCommand('inspect')" class="action-btn bg-turtle-accent hover:bg-cyan-600 p-1.5 rounded text-xs">Inspect</button>
+                    <button onclick="sendCommand('detectAll')" class="action-btn bg-turtle-accent hover:bg-cyan-600 p-1.5 rounded text-xs">Detect</button>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 class="text-xs font-semibold mb-2 text-gray-400">Status</h4>
+                  <div class="space-y-2 text-xs">
+                    <div>
+                      <div class="flex justify-between mb-0.5">
+                        <span class="text-gray-400">Fuel</span>
+                        <span id="fuel-text">0</span>
+                      </div>
+                      <div class="w-full bg-turtle-dark rounded-full h-2">
+                        <div id="fuel-bar" class="bg-turtle-green h-2 rounded-full transition-all" style="width: 0%"></div>
+                      </div>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-gray-400">Position</span>
+                      <span id="position-text" class="font-mono text-xs">0, 0, 0</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-gray-400">Direction</span>
+                      <span id="direction-text">North</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="w-72 bg-turtle-card border-l border-turtle-accent flex flex-col overflow-hidden">
+            <div class="p-3 border-b border-turtle-accent">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold">Inventory</h3>
+                <span id="slot-text" class="text-xs text-gray-400">Slot: 1</span>
+              </div>
+              <div id="inventory-grid" class="grid grid-cols-4 gap-1"></div>
+            </div>
+            
+            <div class="p-3 border-b border-turtle-accent">
+              <h3 class="text-sm font-semibold mb-2">Equipment</h3>
+              <div class="flex gap-2">
+                <div class="flex-1">
+                  <span class="text-xs text-gray-400 block mb-1">Left Hand</span>
+                  <div id="equip-left" class="equipment-slot bg-turtle-dark border border-turtle-accent rounded p-2 h-14 flex flex-col items-center justify-center text-xs cursor-pointer hover:border-turtle-green" onclick="sendCommand('equipLeft')" oncontextmenu="showEquipMenu(event, 'left')">
+                    <div class="text-gray-500">Empty</div>
+                  </div>
+                </div>
+                <div class="flex-1">
+                  <span class="text-xs text-gray-400 block mb-1">Right Hand</span>
+                  <div id="equip-right" class="equipment-slot bg-turtle-dark border border-turtle-accent rounded p-2 h-14 flex flex-col items-center justify-center text-xs cursor-pointer hover:border-turtle-green" onclick="sendCommand('equipRight')" oncontextmenu="showEquipMenu(event, 'right')">
+                    <div class="text-gray-500">Empty</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="p-3 border-b border-turtle-accent">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold">Peripherals</h3>
+                <button onclick="openPeripheralModal()" class="text-xs bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded">Actions</button>
+              </div>
+              <div id="peripherals-list" class="max-h-24 overflow-y-auto">
+                <div class="text-xs text-gray-500">No peripherals</div>
+              </div>
+            </div>
+            
+            <div class="flex-1 flex flex-col p-3 overflow-hidden">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold">Console</h3>
+                <button onclick="clearConsole()" class="text-xs text-gray-400 hover:text-white">Clear</button>
+              </div>
+              <div id="console-output" class="flex-1 bg-turtle-dark rounded p-2 overflow-y-auto font-mono text-xs">
+                <div class="text-gray-500">Waiting for output...</div>
+              </div>
+              <div class="mt-2">
+                <div class="flex gap-1">
+                  <input type="text" id="lua-code" class="flex-1 bg-turtle-dark border border-turtle-accent rounded px-2 py-1 text-xs focus:outline-none focus:border-turtle-green" placeholder="Lua code...">
+                  <button onclick="executeLua()" class="bg-turtle-green text-turtle-dark px-2 py-1 rounded text-xs font-semibold hover:bg-green-400">Run</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="context-menu" class="fixed bg-turtle-card border border-turtle-accent rounded-lg shadow-xl z-50 hidden min-w-48">
+    <div class="p-2 border-b border-turtle-accent">
+      <div id="context-block-name" class="text-sm font-semibold"></div>
+      <div id="context-block-pos" class="text-xs text-gray-400"></div>
+    </div>
+    <div class="p-1">
+      <button onclick="contextMenuAction('goto')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded flex items-center gap-2">
+        <span class="text-green-400">Go to</span>
+      </button>
+      <button onclick="contextMenuAction('waypoint')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded flex items-center gap-2">
+        <span class="text-yellow-400">Set Waypoint</span>
+      </button>
+      <button onclick="contextMenuAction('details')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded flex items-center gap-2">
+        <span class="text-blue-400">View Details</span>
+      </button>
+      <button id="context-inventory-btn" onclick="contextMenuAction('inventory')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded flex items-center gap-2 hidden">
+        <span class="text-purple-400">View Inventory</span>
+      </button>
+      <button id="context-scan-inv-btn" onclick="contextMenuAction('scanInventory')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded flex items-center gap-2 hidden">
+        <span class="text-cyan-400">Scan Inventory</span>
+      </button>
+      <button onclick="contextMenuAction('forget')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded flex items-center gap-2">
+        <span class="text-red-400">Forget Block</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="block-details-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-turtle-card rounded-lg shadow-xl w-96 max-h-96 overflow-hidden">
+      <div class="p-4 border-b border-turtle-accent flex justify-between items-center">
+        <h3 class="font-semibold">Block Details</h3>
+        <button onclick="closeBlockDetails()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+      <div id="block-details-content" class="p-4 overflow-y-auto max-h-72 text-sm">
+      </div>
+    </div>
+  </div>
+
+  <div id="waypoint-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-turtle-card rounded-lg shadow-xl w-80">
+      <div class="p-4 border-b border-turtle-accent">
+        <h3 class="font-semibold">Set Waypoint</h3>
+      </div>
+      <div class="p-4">
+        <input type="text" id="waypoint-name" class="w-full bg-turtle-dark border border-turtle-accent rounded px-3 py-2 text-sm focus:outline-none focus:border-turtle-green mb-4" placeholder="Waypoint name...">
+        <div class="flex gap-2">
+          <button onclick="closeWaypointModal()" class="flex-1 bg-turtle-accent hover:bg-turtle-highlight px-3 py-2 rounded text-sm">Cancel</button>
+          <button onclick="confirmWaypoint()" class="flex-1 bg-turtle-green text-turtle-dark px-3 py-2 rounded text-sm font-semibold hover:bg-green-400">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="peripheral-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-turtle-card rounded-lg shadow-xl w-[600px] max-h-[85vh] overflow-hidden">
+      <div class="p-4 border-b border-turtle-accent flex justify-between items-center">
+        <h3 class="font-semibold">Peripheral Actions</h3>
+        <button onclick="closePeripheralModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <div class="p-4 overflow-y-auto max-h-[70vh]">
+        <div id="crafty-section" class="mb-4 hidden">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-semibold text-yellow-400">Crafting Grid</h4>
+            <button onclick="sendCommand('craft', [1])" class="text-xs bg-turtle-green text-turtle-dark px-2 py-1 rounded hover:bg-green-400">Craft</button>
+          </div>
+          <div id="crafting-grid" class="grid grid-cols-3 gap-1 mb-2">
+            <div class="craft-slot" data-slot="1"></div>
+            <div class="craft-slot" data-slot="2"></div>
+            <div class="craft-slot" data-slot="3"></div>
+            <div class="craft-slot" data-slot="5"></div>
+            <div class="craft-slot" data-slot="6"></div>
+            <div class="craft-slot" data-slot="7"></div>
+            <div class="craft-slot" data-slot="9"></div>
+            <div class="craft-slot" data-slot="10"></div>
+            <div class="craft-slot" data-slot="11"></div>
+          </div>
+        </div>
+        
+        <div id="external-inv-section" class="mb-4 hidden">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-sm font-semibold text-purple-400">External Inventory</h4>
+            <button onclick="sendCommand('getExternalInventory')" class="text-xs bg-turtle-accent hover:bg-turtle-highlight px-2 py-1 rounded">Refresh</button>
+          </div>
+          <div id="external-inventory" class="grid grid-cols-6 gap-1 max-h-48 overflow-y-auto">
+            <div class="text-xs text-gray-500 col-span-6 text-center py-2">Click Refresh to scan</div>
+          </div>
+        </div>
+        
+        <h4 class="text-sm font-semibold mb-2">Attached Peripherals</h4>
+        <div id="peripheral-actions-list" class="space-y-3">
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="item-context-menu" class="fixed bg-turtle-card border border-turtle-accent rounded-lg shadow-xl z-50 hidden min-w-32">
+    <div class="p-2 border-b border-turtle-accent">
+      <div id="item-context-name" class="text-xs font-semibold truncate"></div>
+    </div>
+    <div class="p-1">
+      <button id="item-ctx-take" onclick="itemContextAction('take')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded hidden">
+        <span class="text-green-400">Take 1</span>
+      </button>
+      <button id="item-ctx-takeAll" onclick="itemContextAction('takeAll')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded hidden">
+        <span class="text-green-400">Take All</span>
+      </button>
+      <button id="item-ctx-put" onclick="itemContextAction('put')" class="w-full text-left px-3 py-2 text-sm hover:bg-turtle-accent rounded hidden">
+        <span class="text-blue-400">Put to Chest</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="inventory-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+    <div class="bg-turtle-card rounded-lg shadow-xl w-[400px] max-h-[80vh] overflow-hidden">
+      <div class="p-4 border-b border-turtle-accent flex justify-between items-center">
+        <h3 class="font-semibold">Container Inventory</h3>
+        <button onclick="closeInventoryModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <div id="inventory-modal-content" class="p-4 overflow-y-auto max-h-[60vh]">
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/world3d.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
