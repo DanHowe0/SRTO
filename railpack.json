@@ -1,0 +1,7 @@
+{
+  "name": "SRTO",
+  "description": "Railpack configuration for the app.",
+  "install": "npm install",
+  "build": "npm run build",
+  "start": "npm start",
+}
